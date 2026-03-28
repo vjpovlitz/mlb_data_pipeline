@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MLB Win Probability Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #7d8590;
+      --accent-blue: #388bfd;
+      --accent-green: #3fb950;
+      --accent-red: #f85149;
+      --accent-yellow: #d29922;
+      --win: #3fb950;
+      --lose: #f85149;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ---- HEADER ---- */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+    .logo span { color: var(--accent-blue); }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent-red);
+      transition: background 0.3s;
+    }
+    .status-dot.live { background: var(--accent-green); animation: pulse 1.5s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    #status-label { font-size: 13px; color: var(--text-muted); }
+    #date-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+    .btn {
+      padding: 6px 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: var(--border); }
+    .btn-primary { background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+    .btn-primary:hover { background: #1a7fd4; }
+
+    /* ---- LAYOUT ---- */
+    .main {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: calc(100vh - 57px);
+    }
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .content { overflow-y: auto; padding: 24px; }
+
+    /* ---- SIDEBAR ---- */
+    .sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .game-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .game-card:hover { border-color: var(--accent-blue); }
+    .game-card.active { border-color: var(--accent-blue); background: #1c2433; }
+    .game-teams {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .game-score { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+    .game-meta {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-live { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+    .badge-final { background: rgba(125, 133, 144, 0.15); color: var(--text-muted); }
+    .badge-preview { background: rgba(56, 139, 253, 0.15); color: var(--accent-blue); }
+    .win-prob-bar {
+      margin-top: 8px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .win-prob-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--lose), var(--win));
+      transition: width 0.5s ease;
+    }
+
+    /* ---- CONTENT AREA ---- */
+    .game-header {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .team-block { text-align: center; min-width: 120px; }
+    .team-name { font-size: 14px; color: var(--text-muted); }
+    .team-score-lg { font-size: 48px; font-weight: 700; line-height: 1; }
+    .game-divider {
+      flex: 1;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .inning-display { font-size: 22px; font-weight: 700; color: var(--text); }
+    .game-detail { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+    /* win prob big display */
+    .prob-display {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .prob-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      text-align: center;
+    }
+    .prob-label { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .prob-value { font-size: 42px; font-weight: 700; }
+    .prob-value.home { color: var(--accent-green); }
+    .prob-value.away { color: var(--accent-blue); }
+
+    /* Chart */
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .chart-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .chart-wrap { height: 260px; position: relative; }
+
+    /* Play-by-play */
+    .pbp-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .pbp-list {
+      max-height: 300px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .pbp-entry {
+      background: var(--surface2);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      border-left: 3px solid var(--border);
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(-8px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .pbp-entry.scoring { border-left-color: var(--accent-yellow); }
+    .pbp-entry.strikeout { border-left-color: var(--accent-red); }
+    .pbp-entry.hit { border-left-color: var(--accent-green); }
+    .pbp-event { font-weight: 600; margin-bottom: 2px; }
+    .pbp-desc { color: var(--text-muted); font-size: 12px; }
+
+    /* Bases diagram */
+    .bases-display {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .diamond {
+      position: relative;
+      width: 80px;
+      height: 80px;
+    }
+    .base {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      transform: rotate(45deg);
+      background: var(--surface2);
+      transition: background 0.3s, border-color 0.3s;
+    }
+    .base.occupied { background: var(--accent-yellow); border-color: var(--accent-yellow); }
+    .base-second { top: 8px; left: 32px; }
+    .base-third { top: 32px; left: 8px; }
+    .base-first { top: 32px; left: 56px; }
+    .base-home { top: 56px; left: 32px; }
+    .count-display { font-size: 13px; }
+    .count-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
+    .count-val { font-size: 20px; font-weight: 700; }
+    .count-dots { display: flex; gap: 4px; margin-top: 4px; }
+    .count-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--border); border: 1px solid var(--text-muted);
+    }
+    .count-dot.ball.active { background: var(--accent-green); border-color: var(--accent-green); }
+    .count-dot.strike.active { background: var(--accent-red); border-color: var(--accent-red); }
+    .count-dot.out.active { background: var(--accent-yellow); border-color: var(--accent-yellow); }
+
+    /* empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+      color: var(--text-muted);
+      text-align: center;
+      gap: 12px;
+    }
+    .empty-icon { font-size: 48px; }
+    .empty-title { font-size: 18px; font-weight: 600; color: var(--text); }
+
+    /* model info strip */
+    .model-strip {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: right;
+      margin-top: -12px;
+      margin-bottom: 16px;
+    }
+
+    /* loading */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚾ MLB <span>WinProb</span></div>
+  <div class="status-dot" id="status-dot"></div>
+  <span id="status-label">Disconnected</span>
+  <div class="header-right">
+    <input type="date" id="date-input" />
+    <button class="btn btn-primary" onclick="loadGames()">Load Games</button>
+  </div>
+</header>
+
+<div class="main">
+  <aside class="sidebar">
+    <div class="sidebar-title">Today's Games</div>
+    <div id="games-list"><div class="empty-state" style="height:200px"><span>Select a date above</span></div></div>
+  </aside>
+
+  <main class="content" id="content-area">
+    <div class="empty-state">
+      <div class="empty-icon">🏟️</div>
+      <div class="empty-title">Select a game to watch</div>
+      <p>Real-time win probability updates via WebSocket</p>
+    </div>
+  </main>
+</div>
+
+<script>
+// -----------------------------------------------------------------------
+// CONFIG
+// -----------------------------------------------------------------------
+const API_BASE = window.location.origin + "/api";
+const WS_BASE  = "ws://" + window.location.host;
+
+// -----------------------------------------------------------------------
+// STATE
+// -----------------------------------------------------------------------
+let selectedGame = null;
+let ws = null;
+let winProbChart = null;
+let winProbHistory = [];
+let modelVersion = "heuristic_v1";
+let awayTeam = "Away";
+let homeTeam = "Home";
+
+// -----------------------------------------------------------------------
+// INIT
+// -----------------------------------------------------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  const today = new Date().toISOString().split("T")[0];
+  document.getElementById("date-input").value = today;
+  loadGames();
+});
+
+// -----------------------------------------------------------------------
+// GAMES LIST
+// -----------------------------------------------------------------------
+async function loadGames() {
+  const dateVal = document.getElementById("date-input").value;
+  const list = document.getElementById("games-list");
+  list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px">Loading... <span class="spinner"></span></div>';
+
+  try {
+    const resp = await fetch(`${API_BASE}/games${dateVal ? "?query_date=" + dateVal : ""}`);
+    if (!resp.ok) throw new Error(resp.statusText);
+    const games = await resp.json();
+
+    if (!games.length) {
+      list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px">No games found for this date.</div>';
+      return;
+    }
+
+    list.innerHTML = "";
+    for (const g of games) {
+      list.appendChild(renderGameCard(g));
+    }
+  } catch (e) {
+    list.innerHTML = `<div style="color:var(--accent-red);font-size:13px;padding:8px">Error: ${e.message}</div>`;
+  }
+}
+
+function renderGameCard(g) {
+  const div = document.createElement("div");
+  div.className = "game-card" + (selectedGame?.game_pk === g.game_pk ? " active" : "");
+  div.dataset.gamePk = g.game_pk;
+
+  const prob = g.home_win_prob ?? 0.5;
+  const statusClass = g.status === "Live" ? "badge-live" : g.status === "Final" ? "badge-final" : "badge-preview";
+
+  div.innerHTML = `
+    <div class="game-teams">
+      <span>${g.away_team}</span>
+      <span class="game-score">${g.away_score} - ${g.home_score}</span>
+      <span>${g.home_team}</span>
+    </div>
+    <div class="game-meta">
+      <span class="status-badge ${statusClass}">${g.status}${g.inning ? " · Inn " + g.inning : ""}</span>
+      <span>${g.home_win_prob != null ? (prob * 100).toFixed(0) + "% HWP" : ""}</span>
+    </div>
+    <div class="win-prob-bar">
+      <div class="win-prob-fill" style="width:${prob * 100}%"></div>
+    </div>
+  `;
+  div.onclick = () => selectGame(g);
+  return div;
+}
+
+// -----------------------------------------------------------------------
+// SELECT GAME
+// -----------------------------------------------------------------------
+async function selectGame(g) {
+  selectedGame = g;
+  awayTeam = g.away_team;
+  homeTeam = g.home_team;
+  winProbHistory = [];
+
+  // update sidebar active state
+  document.querySelectorAll(".game-card").forEach(c => {
+    c.classList.toggle("active", +c.dataset.gamePk === g.game_pk);
+  });
+
+  // close existing ws
+  if (ws) { ws.close(); ws = null; }
+
+  // load win prob history
+  try {
+    const resp = await fetch(`${API_BASE}/games/${g.game_pk}/win_prob`);
+    if (resp.ok) {
+      const history = await resp.json();
+      winProbHistory = history.map(h => ({ x: h.inning + (h.half_inning === "bottom" ? 0.5 : 0), y: h.home_win_prob * 100 }));
+    }
+  } catch (_) {}
+
+  // load model status
+  try {
+    const mResp = await fetch(`${API_BASE}/model/status`);
+    if (mResp.ok) {
+      const ms = await mResp.json();
+      modelVersion = ms.version;
+    }
+  } catch (_) {}
+
+  // render game view
+  renderGameView(g);
+  connectWebSocket(g.game_pk);
+}
+
+// -----------------------------------------------------------------------
+// GAME VIEW
+// -----------------------------------------------------------------------
+function renderGameView(g) {
+  const prob = g.home_win_prob ?? 0.5;
+  const content = document.getElementById("content-area");
+  content.innerHTML = `
+    <div class="game-header" id="game-header">
+      <div class="team-block">
+        <div class="team-name">${g.away_team} <small style="color:var(--text-muted)">(Away)</small></div>
+        <div class="team-score-lg" id="away-score">${g.away_score}</div>
+      </div>
+      <div class="game-divider">
+        <div class="inning-display" id="inning-display">${formatInning(g)}</div>
+        <div class="game-detail" id="game-detail">${g.status}</div>
+        <div class="bases-display" style="justify-content:center;margin-top:10px">
+          <div class="diamond">
+            <div class="base base-second" id="base-2"></div>
+            <div class="base base-third" id="base-3"></div>
+            <div class="base base-first" id="base-1"></div>
+            <div class="base base-home"></div>
+          </div>
+          <div class="count-display" style="margin-left:8px">
+            <div class="count-label">Balls</div>
+            <div class="count-dots" id="balls-dots">
+              <div class="count-dot ball"></div><div class="count-dot ball"></div>
+              <div class="count-dot ball"></div>
+            </div>
+            <div class="count-label" style="margin-top:6px">Strikes</div>
+            <div class="count-dots" id="strikes-dots">
+              <div class="count-dot strike"></div><div class="count-dot strike"></div>
+            </div>
+            <div class="count-label" style="margin-top:6px">Outs</div>
+            <div class="count-dots" id="outs-dots">
+              <div class="count-dot out"></div><div class="count-dot out"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="team-block">
+        <div class="team-name">${g.home_team} <small style="color:var(--text-muted)">(Home)</small></div>
+        <div class="team-score-lg" id="home-score">${g.home_score}</div>
+      </div>
+    </div>
+
+    <div class="prob-display">
+      <div class="prob-card">
+        <div class="prob-label">${g.away_team} Win Probability</div>
+        <div class="prob-value away" id="away-prob">${((1 - prob) * 100).toFixed(1)}%</div>
+      </div>
+      <div class="prob-card">
+        <div class="prob-label">${g.home_team} Win Probability</div>
+        <div class="prob-value home" id="home-prob">${(prob * 100).toFixed(1)}%</div>
+      </div>
+    </div>
+    <div class="model-strip" id="model-strip">Model: ${modelVersion}</div>
+
+    <div class="chart-card">
+      <div class="chart-title">Win Probability Chart — ${g.home_team}</div>
+      <div class="chart-wrap"><canvas id="win-prob-chart"></canvas></div>
+    </div>
+
+    <div class="pbp-card">
+      <div class="chart-title" style="margin-bottom:12px">Play-by-Play</div>
+      <div class="pbp-list" id="pbp-list"></div>
+    </div>
+  `;
+
+  initChart();
+}
+
+function formatInning(g) {
+  if (!g.inning) return g.status === "Preview" ? "Pre" : "Final";
+  return `${g.half_inning || ""} ${g.inning}`;
+}
+
+// -----------------------------------------------------------------------
+// CHART
+// -----------------------------------------------------------------------
+function initChart() {
+  const ctx = document.getElementById("win-prob-chart");
+  if (!ctx) return;
+  if (winProbChart) { winProbChart.destroy(); }
+
+  winProbChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      datasets: [{
+        label: `${homeTeam} Win%`,
+        data: winProbHistory,
+        borderColor: "#3fb950",
+        backgroundColor: "rgba(63,185,80,0.1)",
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+      }, {
+        label: "50% line",
+        data: [{x: 0, y: 50}, {x: 10, y: 50}],
+        borderColor: "rgba(125,133,144,0.4)",
+        borderWidth: 1,
+        borderDash: [4, 4],
+        pointRadius: 0,
+        fill: false,
+      }]
+    },
+    options: {
+      animation: { duration: 300 },
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          type: "linear",
+          min: 1,
+          max: 9.5,
+          title: { display: true, text: "Inning", color: "#7d8590" },
+          ticks: { color: "#7d8590" },
+          grid: { color: "rgba(48,54,61,0.6)" },
+        },
+        y: {
+          min: 0,
+          max: 100,
+          title: { display: true, text: "Home Win %", color: "#7d8590" },
+          ticks: {
+            color: "#7d8590",
+            callback: v => v + "%",
+          },
+          grid: { color: "rgba(48,54,61,0.6)" },
+        }
+      },
+      plugins: {
+        legend: { labels: { color: "#7d8590", font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.dataset.label + ": " + ctx.parsed.y.toFixed(1) + "%"
+          }
+        }
+      }
+    }
+  });
+}
+
+function pushChartPoint(inning, halfInning, prob) {
+  if (!winProbChart) return;
+  const x = inning + (halfInning === "bottom" ? 0.5 : 0);
+  winProbChart.data.datasets[0].data.push({ x, y: prob * 100 });
+  if (winProbChart.data.datasets[0].data.length > 100) {
+    winProbChart.data.datasets[0].data.shift();
+  }
+  // Extend x-axis for extra innings
+  if (x > winProbChart.options.scales.x.max - 0.5) {
+    winProbChart.options.scales.x.max = Math.ceil(x) + 1;
+  }
+  winProbChart.update("none");
+}
+
+// -----------------------------------------------------------------------
+// WEBSOCKET
+// -----------------------------------------------------------------------
+function connectWebSocket(gamePk) {
+  const dot = document.getElementById("status-dot");
+  const label = document.getElementById("status-label");
+
+  ws = new WebSocket(`${WS_BASE}/ws/${gamePk}`);
+
+  ws.onopen = () => {
+    dot.classList.add("live");
+    label.textContent = "Live";
+    // send keepalive
+    setInterval(() => { if (ws && ws.readyState === 1) ws.send("ping"); }, 20000);
+  };
+  ws.onclose = () => {
+    dot.classList.remove("live");
+    label.textContent = "Disconnected";
+  };
+  ws.onerror = () => {
+    label.textContent = "WS Error";
+  };
+  ws.onmessage = evt => {
+    if (evt.data === "pong") return;
+    try {
+      const msg = JSON.parse(evt.data);
+      handleMessage(msg);
+    } catch (_) {}
+  };
+}
+
+function handleMessage(msg) {
+  if (!msg || !msg.type) return;
+  switch (msg.type) {
+    case "win_prob":
+      updateWinProb(msg);
+      break;
+    case "pitch":
+      updatePitch(msg);
+      break;
+    case "at_bat":
+      addPlayByPlay(msg);
+      break;
+    case "game_state":
+      updateGameState(msg);
+      break;
+  }
+}
+
+// -----------------------------------------------------------------------
+// UPDATE FUNCTIONS
+// -----------------------------------------------------------------------
+function updateWinProb(msg) {
+  const homeProb = msg.home_win_prob ?? 0.5;
+  const awayProb = 1 - homeProb;
+  setEl("home-prob", (homeProb * 100).toFixed(1) + "%");
+  setEl("away-prob", (awayProb * 100).toFixed(1) + "%");
+  if (msg.inning && msg.half_inning) {
+    pushChartPoint(msg.inning, msg.half_inning, homeProb);
+  }
+  // Update sidebar card
+  const card = document.querySelector(`[data-game-pk="${selectedGame?.game_pk}"] .win-prob-fill`);
+  if (card) card.style.width = (homeProb * 100) + "%";
+}
+
+function updatePitch(msg) {
+  setEl("away-score", msg.away_score ?? "");
+  setEl("home-score", msg.home_score ?? "");
+  if (msg.inning && msg.half) {
+    setEl("inning-display", (msg.half === "top" ? "▲" : "▼") + " " + msg.inning);
+  }
+  // Count
+  updateCountDots("balls-dots", "ball", msg.balls ?? 0, 3);
+  updateCountDots("strikes-dots", "strike", msg.strikes ?? 0, 2);
+  updateCountDots("outs-dots", "out", msg.outs ?? 0, 2);
+}
+
+function addPlayByPlay(msg) {
+  const list = document.getElementById("pbp-list");
+  if (!list) return;
+
+  const entry = document.createElement("div");
+  const isScoring = msg.is_scoring_play;
+  const event = (msg.event || "").toLowerCase();
+  let cls = "pbp-entry";
+  if (isScoring) cls += " scoring";
+  else if (event.includes("strikeout") || event.includes("strike_out")) cls += " strikeout";
+  else if (["single","double","triple","home_run"].some(e => event.includes(e))) cls += " hit";
+
+  entry.className = cls;
+  entry.innerHTML = `
+    <div class="pbp-event">${msg.event || "—"} — ${msg.batter || ""}</div>
+    <div class="pbp-desc">${msg.description || ""}</div>
+  `;
+
+  list.insertBefore(entry, list.firstChild);
+  while (list.children.length > 30) list.removeChild(list.lastChild);
+
+  setEl("away-score", msg.away_score ?? "");
+  setEl("home-score", msg.home_score ?? "");
+}
+
+function updateGameState(msg) {
+  setEl("game-detail", msg.new_state || "");
+}
+
+function updateCountDots(containerId, cls, active, total) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const dots = container.querySelectorAll(".count-dot." + cls);
+  dots.forEach((d, i) => d.classList.toggle("active", i < active));
+}
+
+function setEl(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+</script>
+</body>
+</html>

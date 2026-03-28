@@ -16,6 +16,7 @@ dependencies = [
     "alembic>=1.13",
     "pydantic>=2.5",
     "pydantic-settings>=2.1",
+    "numpy>=1.26",
     "polars>=1.0",
     "duckdb>=1.0",
     "pyarrow>=15.0",
@@ -37,7 +38,8 @@ orchestration = ["prefect>=3.0"]
 quality = ["great-expectations>=0.18"]
 dashboard = [
     "fastapi>=0.109",
-    "uvicorn>=0.27",
+    "uvicorn[standard]>=0.27",
+    "websockets>=12.0",
 ]
 dev = [
     "pytest>=8.0",
