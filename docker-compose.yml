@@ -44,7 +44,7 @@ services:
       retries: 3
 
   airflow-init:
-    image: apache/airflow:2.10-python3.12
+    image: apache/airflow:2.10.5-python3.12
     depends_on:
       airflow-postgres:
         condition: service_healthy
@@ -70,7 +70,7 @@ services:
           --email admin@localhost || true
 
   airflow-webserver:
-    image: apache/airflow:2.10-python3.12
+    image: apache/airflow:2.10.5-python3.12
     depends_on:
       airflow-postgres:
         condition: service_healthy
@@ -98,7 +98,7 @@ services:
       start_period: 30s
 
   airflow-scheduler:
-    image: apache/airflow:2.10-python3.12
+    image: apache/airflow:2.10.5-python3.12
     depends_on:
       airflow-postgres:
         condition: service_healthy
