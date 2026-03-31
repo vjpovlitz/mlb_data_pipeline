@@ -39,3 +39,6 @@ htmlcov/
 
 # Ruff
 .ruff_cache/
+
+# Airflow (runs in Docker, local home dir not needed)
+airflow_home/

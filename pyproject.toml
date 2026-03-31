@@ -33,7 +33,7 @@ ml = [
     "scikit-learn>=1.4",
     "matplotlib>=3.8",
 ]
-orchestration = ["prefect>=3.0"]
+orchestration = ["apache-airflow>=2.10"]
 quality = ["great-expectations>=0.18"]
 dashboard = [
     "fastapi>=0.109",
