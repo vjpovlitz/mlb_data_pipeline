@@ -28,10 +28,54 @@ def ingest():
 
 
 @ingest.command("live")
-def ingest_live():
+@click.option("--date", "target_date", default=None, help="Date to poll (YYYY-MM-DD, default: today)")
+@click.option("--no-redis", is_flag=True, help="Disable Redis publishing")
+def ingest_live(target_date: str | None, no_redis: bool):
     """Start live game poller for real-time data ingestion."""
-    click.echo("Starting live game poller... (Phase 2)")
-    # Will be implemented in Phase 2
+
+    async def _run():
+        from datetime import date as dt_date
+
+        from sqlalchemy import create_engine
+
+        from mlb_pipeline.config import settings
+        from mlb_pipeline.ingestion.client import MLBStatsClient
+        from mlb_pipeline.ingestion.poller import LiveGamePoller
+        from mlb_pipeline.storage.sqlserver import SQLServerStorage
+        from mlb_pipeline.stream.publisher import RedisPublisher
+
+        poll_date = dt_date.fromisoformat(target_date) if target_date else dt_date.today()
+
+        engine = create_engine(settings.db_connection_string)
+        storage = SQLServerStorage(engine)
+
+        publisher = None
+        if not no_redis and settings.redis_enabled:
+            publisher = RedisPublisher.create(
+                settings.redis_url, maxlen=settings.redis_stream_maxlen
+            )
+            if publisher is None:
+                click.echo("Warning: Redis unavailable, continuing without streaming.")
+
+        click.echo(f"Starting live poller for {poll_date.isoformat()}...")
+
+        async with MLBStatsClient() as client:
+            poller = LiveGamePoller(
+                client=client,
+                storage=storage,
+                publisher=publisher,
+                settings=settings,
+            )
+            try:
+                await poller.run(target_date=poll_date)
+            finally:
+                if publisher:
+                    publisher.close()
+
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        click.echo("\nShutdown requested. Exiting cleanly.")
 
 
 @ingest.command("backfill")

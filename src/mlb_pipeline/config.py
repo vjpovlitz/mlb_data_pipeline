@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
+    redis_enabled: bool = True
+    redis_stream_maxlen: int = 100_000
 
     # Polling intervals (seconds)
     poll_interval_live: float = 2.0
