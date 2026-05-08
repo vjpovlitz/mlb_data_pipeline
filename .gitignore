@@ -42,3 +42,9 @@ htmlcov/
 
 # Airflow (runs in Docker, local home dir not needed)
 airflow_home/
+
+# Local logs from CLI runs
+*.log
+
+# Claude Code local settings
+.claude/

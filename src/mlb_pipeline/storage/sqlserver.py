@@ -4,7 +4,7 @@ from datetime import date
 from typing import Sequence
 
 import structlog
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, distinct, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -116,3 +116,19 @@ class SQLServerStorage:
         """Retrieve a game record by primary key."""
         with Session(self._engine) as session:
             return session.get(Game, game_pk)
+
+    def get_game_pks_with_pitches(self) -> set[int]:
+        """Return game_pks that already have at least one pitch row."""
+        with Session(self._engine) as session:
+            rows = session.execute(select(distinct(Pitch.game_pk))).all()
+            return {r[0] for r in rows}
+
+    def get_game_pks_in_range(self, start: date, end: date) -> set[int]:
+        """Return game_pks present in `games` with game_date in [start, end]."""
+        with Session(self._engine) as session:
+            rows = session.execute(
+                select(Game.game_pk).where(
+                    Game.game_date >= start, Game.game_date <= end
+                )
+            ).all()
+            return {r[0] for r in rows}

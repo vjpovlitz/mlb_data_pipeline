@@ -37,6 +37,9 @@ class Game(Base):
     home_score: Mapped[int] = mapped_column(Integer, default=0)
     home_team_won: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
+    venue_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    first_pitch_time_utc: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None)
     )
@@ -190,6 +193,53 @@ class PlayerStatsDaily(Base):
     earned_runs: Mapped[int] = mapped_column(Integer, default=0)
     strikeouts_pitching: Mapped[int] = mapped_column(Integer, default=0)
     walks_pitching: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Venue(Base):
+    __tablename__ = "venues"
+
+    venue_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(200))
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    elevation_ft: Mapped[float | None] = mapped_column(Float, nullable=True)
+    azimuth_angle: Mapped[float | None] = mapped_column(Float, nullable=True)
+    roof_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    turf_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class GameWeather(Base):
+    __tablename__ = "game_weather"
+
+    game_pk: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    venue_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    observation_time_utc: Mapped[datetime] = mapped_column(DateTime)
+    is_indoor: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    temperature_f: Mapped[float | None] = mapped_column(Float, nullable=True)
+    feels_like_f: Mapped[float | None] = mapped_column(Float, nullable=True)
+    relative_humidity_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    precipitation_in: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wind_speed_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wind_gust_mph: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wind_direction_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cloud_cover_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pressure_hpa: Mapped[float | None] = mapped_column(Float, nullable=True)
+    weather_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    mlb_condition: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    mlb_temp_f: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mlb_wind_text: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    roof_closed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    source: Mapped[str] = mapped_column(String(30), default="open-meteo")
+    retrieved_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None)
+    )
 
 
 class WinProbabilityLog(Base):

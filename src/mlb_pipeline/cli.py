@@ -81,10 +81,168 @@ def ingest_live(target_date: str | None, no_redis: bool):
 @ingest.command("backfill")
 @click.option("--start", required=True, help="Start date (YYYY-MM-DD)")
 @click.option("--end", required=True, help="End date (YYYY-MM-DD)")
-def ingest_backfill(start: str, end: str):
-    """Load historical data for a date range."""
-    click.echo(f"Backfilling data from {start} to {end}... (Phase 3)")
-    # Will be implemented in Phase 3
+@click.option("--concurrency", default=8, help="Concurrent live-feed fetches")
+@click.option("--force", is_flag=True, help="Re-ingest games already present in DB")
+def ingest_backfill(start: str, end: str, concurrency: int, force: bool):
+    """Load historical Final games for a date range into SQL Server."""
+
+    async def _run():
+        from datetime import date as dt_date
+
+        from sqlalchemy import create_engine
+
+        from mlb_pipeline.config import settings
+        from mlb_pipeline.ingestion.client import MLBStatsClient
+        from mlb_pipeline.ingestion.historical import HistoricalGameLoader
+        from mlb_pipeline.storage.sqlserver import SQLServerStorage
+
+        start_date = dt_date.fromisoformat(start)
+        end_date = dt_date.fromisoformat(end)
+
+        engine = create_engine(settings.db_connection_string)
+        storage = SQLServerStorage(engine)
+
+        async with MLBStatsClient() as client:
+            loader = HistoricalGameLoader(
+                client=client, storage=storage, concurrency=concurrency
+            )
+            stats = await loader.backfill(
+                start=start_date, end=end_date, force=force
+            )
+
+        click.echo("")
+        click.echo(f"Backfill {start} -> {end}:")
+        click.echo(f"  games found:     {stats.games_found}")
+        click.echo(f"  games processed: {stats.games_processed}")
+        click.echo(f"  games skipped:   {stats.games_skipped} (already in DB)")
+        click.echo(f"  not yet final:   {stats.games_not_final}")
+        click.echo(f"  failed:          {stats.games_failed}")
+        click.echo(f"  pitches stored:  {stats.pitches_stored}")
+        click.echo(f"  at-bats stored:  {stats.at_bats_stored}")
+        if stats.failed_game_pks:
+            click.echo(f"  failed game_pks: {stats.failed_game_pks}")
+
+    asyncio.run(_run())
+
+
+@ingest.command("game-metadata")
+@click.option("--concurrency", default=12, help="Concurrent feed fetches")
+@click.option(
+    "--all", "all_games", is_flag=True,
+    help="Refresh all games (default: only games missing venue_id or first_pitch)",
+)
+def ingest_game_metadata(concurrency: int, all_games: bool):
+    """Backfill venue_id and first_pitch_time_utc on game rows."""
+
+    async def _run():
+        from sqlalchemy import create_engine
+
+        from mlb_pipeline.config import settings
+        from mlb_pipeline.ingestion.game_metadata import backfill_game_metadata
+
+        engine = create_engine(settings.db_connection_string)
+        stats = await backfill_game_metadata(
+            engine, concurrency=concurrency, only_missing=not all_games
+        )
+        click.echo(f"Game metadata backfill:")
+        click.echo(f"  processed:        {stats.games_processed}")
+        click.echo(f"  venue updated:    {stats.venue_updated}")
+        click.echo(f"  first pitch set:  {stats.first_pitch_updated}")
+        click.echo(f"  failed:           {stats.failed}")
+
+    asyncio.run(_run())
+
+
+@ingest.command("venues")
+@click.option("--concurrency", default=8, help="Concurrent venue fetches")
+def ingest_venues_cmd(concurrency: int):
+    """Fetch venue location and roof info for every venue referenced by games."""
+
+    async def _run():
+        from sqlalchemy import create_engine
+
+        from mlb_pipeline.config import settings
+        from mlb_pipeline.ingestion.client import MLBStatsClient
+        from mlb_pipeline.ingestion.game_metadata import venue_ids_referenced_by_games
+        from mlb_pipeline.ingestion.venues import ingest_venues
+
+        engine = create_engine(settings.db_connection_string)
+        venue_ids = venue_ids_referenced_by_games(engine)
+        if not venue_ids:
+            click.echo(
+                "No venue_ids on games yet. Run 'mlb ingest game-metadata' first."
+            )
+            return
+
+        async with MLBStatsClient() as client:
+            saved = await ingest_venues(client, engine, venue_ids)
+
+        click.echo(f"Venues ingested: {saved} of {len(venue_ids)}")
+
+    asyncio.run(_run())
+
+
+@ingest.command("weather")
+@click.option("--start", default=None, help="Filter by game_date start (YYYY-MM-DD)")
+@click.option("--end", default=None, help="Filter by game_date end (YYYY-MM-DD)")
+@click.option("--concurrency", default=8, help="Concurrent Open-Meteo fetches")
+def ingest_weather(start: str | None, end: str | None, concurrency: int):
+    """Fetch first-pitch weather from Open-Meteo and store per-game."""
+
+    async def _run():
+        from datetime import date as dt_date
+
+        from sqlalchemy import create_engine, select
+        from sqlalchemy.orm import Session
+
+        from mlb_pipeline.config import settings
+        from mlb_pipeline.ingestion.weather import backfill_weather
+        from mlb_pipeline.models.database import Game
+
+        engine = create_engine(settings.db_connection_string)
+
+        game_pks: list[int] | None = None
+        if start or end:
+            with Session(engine) as session:
+                q = select(Game.game_pk).where(Game.status == "Final")
+                if start:
+                    q = q.where(Game.game_date >= dt_date.fromisoformat(start))
+                if end:
+                    q = q.where(Game.game_date <= dt_date.fromisoformat(end))
+                game_pks = [r[0] for r in session.execute(q).all()]
+
+        stats = await backfill_weather(
+            engine, game_pks=game_pks, concurrency=concurrency
+        )
+        click.echo("Weather backfill:")
+        click.echo(f"  games considered:   {stats.games_total}")
+        click.echo(f"  fetched outdoor:    {stats.fetched}")
+        click.echo(f"  indoor (skipped):   {stats.indoor_skipped}")
+        click.echo(f"  no venue:           {stats.no_venue}")
+        click.echo(f"  no first pitch:     {stats.no_first_pitch}")
+        click.echo(f"  failed:             {stats.failed}")
+        if stats.failed_game_pks:
+            click.echo(f"  failed game_pks:    {stats.failed_game_pks[:20]}")
+
+    asyncio.run(_run())
+
+
+@ingest.command("weather-conditions")
+@click.option("--concurrency", default=12, help="Concurrent feed fetches")
+def ingest_weather_conditions(concurrency: int):
+    """Enrich game_weather rows with MLB feed condition / roof state."""
+
+    async def _run():
+        from sqlalchemy import create_engine
+
+        from mlb_pipeline.config import settings
+        from mlb_pipeline.ingestion.weather import enrich_with_mlb_conditions
+
+        engine = create_engine(settings.db_connection_string)
+        n = await enrich_with_mlb_conditions(engine, concurrency=concurrency)
+        click.echo(f"Enriched {n} weather rows with MLB feed conditions.")
+
+    asyncio.run(_run())
 
 
 @main.command("replay")
